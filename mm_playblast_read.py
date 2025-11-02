@@ -218,7 +218,8 @@ def create_latest_playblast_read(category: str = "Wireframe") -> nuke.Node:
     Create a Read node for the latest playblast in the specified category.
 
     Searches for the latest version under the playblast root, supporting both
-    image sequences and movie files.
+    image sequences and movie files. Automatically connects to the currently
+    selected node if one exists.
 
     The search process:
     1. Parse show/seq/shot/user from current .nk file path
@@ -226,6 +227,7 @@ def create_latest_playblast_read(category: str = "Wireframe") -> nuke.Node:
     3. Find version directories (v001, v002, etc.) in reverse order
     4. Scan for image sequences or movie files matching category name
     5. Create Read node with discovered content
+    6. Connect to selected node (if any)
 
     Args:
         category: Playblast category folder name (default: "Wireframe")
@@ -241,11 +243,16 @@ def create_latest_playblast_read(category: str = "Wireframe") -> nuke.Node:
         For Wireframe category:
         Creates node named "Read_playblast_Wireframe_v003" pointing to:
         .../playblast/Wireframe/v003/Wireframe.####.png
+        And connects to the selected node if one was selected
 
         For movie file:
         Creates node named "Read_playblast_Wireframe_v002" pointing to:
         .../playblast/Wireframe/v002/Wireframe.mov
     """
+    # Save the currently selected node to connect to it later
+    selected_nodes = nuke.selectedNodes()
+    source_node: Optional[nuke.Node] = selected_nodes[0] if selected_nodes else None
+
     show, seq, shot, user = _infer_context_from_nk()
 
     # Get playblast root using config
@@ -322,6 +329,14 @@ def create_latest_playblast_read(category: str = "Wireframe") -> nuke.Node:
         except Exception:
             pass
 
+        # Connect to selected node if one was selected
+        if source_node:
+            try:
+                r.setInput(0, source_node)
+                nuke.tprint(f"[playblast] Connected to: {source_node.name()}")
+            except Exception as e:
+                nuke.tprint(f"[playblast] Warning: Could not connect to {source_node.name()}: {e}")
+
         nuke.tprint(f"[playblast] Created Read (sequence): {hash_pattern}")
         nuke.tprint(f"[playblast] Category: {category}  Version v{chosen_v}  Frames: {fmin}-{fmax}  Pad: {pad}")
         return r
@@ -337,6 +352,14 @@ def create_latest_playblast_read(category: str = "Wireframe") -> nuke.Node:
             r["reload"].execute()
         except Exception:
             pass
+
+        # Connect to selected node if one was selected
+        if source_node:
+            try:
+                r.setInput(0, source_node)
+                nuke.tprint(f"[playblast] Connected to: {source_node.name()}")
+            except Exception as e:
+                nuke.tprint(f"[playblast] Warning: Could not connect to {source_node.name()}: {e}")
 
         nuke.tprint(f"[playblast] Created Read (movie): {movie_path}")
         nuke.tprint(f"[playblast] Category: {category}  Version v{chosen_v}")

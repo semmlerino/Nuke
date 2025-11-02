@@ -306,6 +306,7 @@ def create_latest_plate_read_hash() -> nuke.Node:
 
     Intelligently detects the appropriate plate ID from the Nuke script path
     and filename, then searches for the latest published plate version.
+    Automatically connects to the currently selected node if one exists.
 
     The search process:
     1. Parse show/seq/shot from current .nk file path
@@ -314,6 +315,7 @@ def create_latest_plate_read_hash() -> nuke.Node:
     4. Look under exr/ and subfolders like exr/4448x3096/
     5. Scan for matching plate sequences
     6. Create Read node with discovered sequence
+    7. Connect to selected node (if any)
 
     Returns:
         Created Nuke Read node configured with the latest plate sequence
@@ -324,7 +326,12 @@ def create_latest_plate_read_hash() -> nuke.Node:
     Example:
         Creates node named "Read_rawPlate_FG01_v002" pointing to:
         /shows/demo/.../FG01/v002/exr/4448x3096/shot_turnover-plate_FG01_linear_v002.####.exr
+        And connects to the selected node if one was selected
     """
+    # Save the currently selected node to connect to it later
+    selected_nodes = nuke.selectedNodes()
+    source_node: Optional[nuke.Node] = selected_nodes[0] if selected_nodes else None
+
     nk_path = nuke.root().name()
     if not nk_path or nk_path == "Root":
         _err("Please save the Nuke script first so I can infer the shot path.")
@@ -484,6 +491,14 @@ def create_latest_plate_read_hash() -> nuke.Node:
         r["reload"].execute()
     except Exception:
         pass
+
+    # Connect to selected node if one was selected
+    if source_node:
+        try:
+            r.setInput(0, source_node)
+            nuke.tprint(f"[plate] Connected to: {source_node.name()}")
+        except Exception as e:
+            nuke.tprint(f"[plate] Warning: Could not connect to {source_node.name()}: {e}")
 
     nuke.tprint(f"[plate] Created Read: {hash_pattern}")
     nuke.tprint(f"[plate] Plate: {chosen_bg}  Version v{chosen_v}  Frames: {fmin}-{fmax}  Pad: {pad}")
