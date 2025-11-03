@@ -14,6 +14,7 @@ Registered Hotkeys:
     Ctrl+Alt+L: Import 3DE lens distortion .nk file
     Ctrl+Alt+B: Create Read node for latest Wireframe playblast
     Ctrl+Alt+W: Create Write node for alternate plates
+    Ctrl+Alt+Shift+W: Create complete Wireframe export setup (6-node tree)
 
 Required Scripts:
     - mm_cone_read.py
@@ -22,6 +23,7 @@ Required Scripts:
     - mm_ld_import.py
     - mm_playblast_read.py
     - mm_write_altplates.py
+    - mm_wireframe_export_setup.py
 
 Usage:
     Place this file at ~/.nuke/menu.py
@@ -62,6 +64,11 @@ cmd_write_alt: str = (
     "import importlib, mm_write_altplates; "
     "importlib.reload(mm_write_altplates); "
     "mm_write_altplates.run()"
+)
+cmd_wireframe_export: str = (
+    "import importlib, mm_wireframe_export_setup; "
+    "importlib.reload(mm_wireframe_export_setup); "
+    "mm_wireframe_export_setup.run()"
 )
 
 # Initialize hotkey tracking on nuke module (persists across reloads)
@@ -109,3 +116,4 @@ add_hidden_hotkey_once("Latest Plate Read", cmd_plate, "ctrl+alt+p")
 add_hidden_hotkey_once("Import 3DE LD .nk", cmd_ld, "ctrl+alt+l")
 add_hidden_hotkey_once("Latest Wireframe Read", cmd_playblast, "ctrl+alt+b")
 add_hidden_hotkey_once("Write AltPlates", cmd_write_alt, "ctrl+alt+w")
+add_hidden_hotkey_once("Wireframe Export Setup", cmd_wireframe_export, "ctrl+alt+shift+w")

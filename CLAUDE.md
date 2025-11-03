@@ -44,7 +44,10 @@ All scripts parse this structure from `nuke.root().name()` to infer show/shot co
 3. **Write Node Creators**:
    - `mm_write_altplates.py` - Creates Write nodes with ACES/OCIO settings
 
-4. **Menu Registration**:
+4. **Export Setup Scripts**:
+   - `mm_wireframe_export_setup.py` - Creates complete 6-node export pipeline (playblast + LD + plate + merge + WriteTank)
+
+5. **Menu Registration**:
    - `menu.py` - Registers hotkeys with deduplication pattern
 
 ### Auto-Connection Pattern
@@ -234,6 +237,7 @@ def add_hidden_hotkey_once(label: str, command: str, shortcut: str) -> None:
 - **Ctrl+Alt+L:** Import 3DE lens distortion .nk (connects to selected node)
 - **Ctrl+Alt+B:** Latest Wireframe playblast Read node
 - **Ctrl+Alt+W:** Create AltPlates Write node (connects to selected node)
+- **Ctrl+Alt+Shift+W:** Create complete Wireframe export setup (6-node tree: playblast + transform + LD + plate + merge + WriteTank)
 
 ## Write Node Configuration Standard
 
@@ -251,6 +255,54 @@ view: "Client3DLUT + grade"
 ```
 
 Note: `user/gabriel-h` is hardcoded for centralized output location.
+
+## Wireframe Export Setup Pipeline
+
+`mm_wireframe_export_setup.py` creates a complete 6-node export pipeline for playblasts with lens distortion:
+
+**Node Tree Structure:**
+```
+[Playblast Read (PNG/movie)]
+    ↓
+[Transform: scale=1.1, center=(2156,1152)]
+    ↓
+[LD_3DE_<PLATE>_v###] (pasted from .nk file)
+    ↓
+[Merge: A=Plate, B=Playblast+LD]
+    ↑
+[Raw Plate Read (EXR)]
+    ↓
+[WriteTank] (Shotgun/Flow farm export)
+```
+
+**Key Features:**
+- Auto-detects plate ID using same logic as `mm_ld_import.py`
+- Finds latest versions of playblast, plate, and LD files
+- Creates independent node tree (not connected to existing graph)
+- Supports multiple playblast categories (Wireframe, Cones, etc.)
+- Configures WriteTank for Camera Elements export
+
+**WriteTank Configuration:**
+```python
+profile_name: "Camera Elements"
+custom_knob_camera_element: "lineupGeo"
+colorspace: "lin_sgamut3cine"
+file_type: "exr"
+channels: "rgb"
+```
+
+**Usage:**
+```python
+# From menu.py or Script Editor:
+import mm_wireframe_export_setup
+mm_wireframe_export_setup.run()  # Creates Wireframe export tree
+
+# For Cones:
+mm_wireframe_export_setup.create_playblast_export_setup(category="Cones")
+```
+
+**Transform Values:**
+- Always scale=1.1, center=(2156, 1152) for all shots
 
 ## When Modifying Pipeline Paths
 
