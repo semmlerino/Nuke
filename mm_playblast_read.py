@@ -24,16 +24,16 @@ Usage:
     mm_playblast_read.run()  # Creates Read node for latest Wireframe playblast
 """
 
-import os
 import re
 from pathlib import Path
-from typing import Optional, Dict, Any, List
+from typing import Any, NoReturn
+
 import nuke
 
 from pipeline_config import PipelineConfig
 
 
-def _err(msg: str) -> None:
+def _err(msg: str) -> NoReturn:
     """
     Display error message to user and raise RuntimeError.
 
@@ -78,7 +78,7 @@ def _version_num(vname: str) -> int:
     return int(m.group(1)) if m else -1
 
 
-def _scan_playblast(vdir: Path, base_name: str) -> Optional[Dict[str, Any]]:
+def _scan_playblast(vdir: Path, base_name: str) -> dict[str, Any] | None:
     """
     Scan a version folder for playblast image sequences or movie files.
 
@@ -124,7 +124,7 @@ def _scan_playblast(vdir: Path, base_name: str) -> Optional[Dict[str, Any]]:
 
     # 1) Try image sequence
     rx_seq = re.compile(rf"^{re.escape(base_name)}\.(\d+)\.([A-Za-z0-9]+)$", re.IGNORECASE)
-    files: List[tuple[Path, int, int, str]] = []
+    files: list[tuple[Path, int, int, str]] = []
 
     for p in vdir.iterdir():
         if not p.is_file():
@@ -137,13 +137,13 @@ def _scan_playblast(vdir: Path, base_name: str) -> Optional[Dict[str, Any]]:
 
     if files:
         # Group by extension. Prefix is constant (base_name).
-        groups: Dict[str, List[tuple[Path, int, int, str]]] = {}
+        groups: dict[str, list[tuple[Path, int, int, str]]] = {}
         for p, frame, pad, ext in files:
             key = ext.lower()
             groups.setdefault(key, []).append((p, frame, pad, ext))
 
         # Choose the group with most files, then newest mtime
-        def group_key(kv: tuple[str, List[tuple[Path, int, int, str]]]) -> tuple[int, float]:
+        def group_key(kv: tuple[str, list[tuple[Path, int, int, str]]]) -> tuple[int, float]:
             _, vals = kv
             count = len(vals)
             newest = max(v[0].stat().st_mtime for v in vals)
@@ -251,7 +251,7 @@ def create_latest_playblast_read(category: str = "Wireframe") -> nuke.Node:
     """
     # Save the currently selected node to connect to it later
     selected_nodes = nuke.selectedNodes()
-    source_node: Optional[nuke.Node] = selected_nodes[0] if selected_nodes else None
+    source_node: nuke.Node | None = selected_nodes[0] if selected_nodes else None
 
     show, seq, shot, user = _infer_context_from_nk()
 
@@ -273,8 +273,8 @@ def create_latest_playblast_read(category: str = "Wireframe") -> nuke.Node:
         _err(f"No version folders under:\n{cat_dir}")
     vdirs.sort(key=lambda d: _version_num(d.name), reverse=True)
 
-    chosen: Optional[Dict[str, Any]] = None
-    chosen_v: Optional[str] = None
+    chosen: dict[str, Any] | None = None
+    chosen_v: str | None = None
 
     for vdir in vdirs:
         hit = _scan_playblast(vdir, category)

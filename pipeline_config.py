@@ -6,7 +6,6 @@ Manages path templates for renders, plates, lens distortion, and playblasts.
 """
 
 from pathlib import Path
-from typing import Dict, Any
 
 
 class PipelineConfig:
@@ -163,7 +162,7 @@ class PipelineConfig:
         ))
 
     @staticmethod
-    def parse_show_shot_from_path(nk_path: Path) -> Dict[str, str]:
+    def parse_show_shot_from_path(nk_path: Path) -> dict[str, str]:
         """
         Parse show, sequence, shot, and user from a Nuke script path.
 

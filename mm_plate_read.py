@@ -23,16 +23,16 @@ Usage:
     mm_plate_read.run()  # Creates Read node for latest plate
 """
 
-import os
 import re
 from pathlib import Path
-from typing import Optional
+from typing import NoReturn
+
 import nuke
 
 from pipeline_config import PipelineConfig
 
 
-def _err(msg: str) -> None:
+def _err(msg: str) -> NoReturn:
     """
     Display error message to user and raise RuntimeError.
 
@@ -77,7 +77,7 @@ def _version_num(vname: str) -> int:
     return int(m.group(1)) if m else -1
 
 
-def _norm_plate_token(tok: str) -> Optional[str]:
+def _norm_plate_token(tok: str) -> str | None:
     """
     Normalize plate token to standard format.
 
@@ -152,7 +152,7 @@ def _candidate_plate_ids_from_path(nk_path: Path) -> list[str]:
     return out
 
 
-def _detect_plate_id(nk_path: Path, plate_root: Path) -> Optional[str]:
+def _detect_plate_id(nk_path: Path, plate_root: Path) -> str | None:
     """
     Detect the most appropriate plate ID for this shot.
 
@@ -191,8 +191,8 @@ def _scan_seq(
     dir_path: Path,
     shot: str,
     vnum: str,
-    plate_id: Optional[str]
-) -> Optional[tuple[str, str, int, int, int, list[Path]]]:
+    plate_id: str | None
+) -> tuple[str, str, int, int, int, list[Path]] | None:
     """
     Scan directory for plate image sequences matching shot, version, and plate ID.
 
@@ -279,7 +279,7 @@ def _maybe_set_format_from_res(read_node: nuke.Node, seq_dir: Path) -> None:
         For path: .../v001/exr/4448x3096/
         Creates format: "4448x3096_from_plate"
     """
-    def wh(name: Optional[str]) -> tuple[Optional[int], Optional[int]]:
+    def wh(name: str | None) -> tuple[int | None, int | None]:
         """Extract width and height from string like '4448x3096'."""
         m = re.match(r"^(\d+)x(\d+)$", name or "")
         return (int(m.group(1)), int(m.group(2))) if m else (None, None)
@@ -330,7 +330,7 @@ def create_latest_plate_read_hash() -> nuke.Node:
     """
     # Save the currently selected node to connect to it later
     selected_nodes = nuke.selectedNodes()
-    source_node: Optional[nuke.Node] = selected_nodes[0] if selected_nodes else None
+    source_node: nuke.Node | None = selected_nodes[0] if selected_nodes else None
 
     nk_path = nuke.root().name()
     if not nk_path or nk_path == "Root":
@@ -365,10 +365,10 @@ def create_latest_plate_read_hash() -> nuke.Node:
     else:
         bg_dirs = [d for d in plate_root.iterdir() if d.is_dir()]
 
-    chosen: Optional[tuple[str, str, int, int, int, list[Path]]] = None
-    chosen_v: Optional[str] = None
-    chosen_seq_dir: Optional[Path] = None
-    chosen_bg: Optional[str] = None
+    chosen: tuple[str, str, int, int, int, list[Path]] | None = None
+    chosen_v: str | None = None
+    chosen_seq_dir: Path | None = None
+    chosen_bg: str | None = None
 
     # For each plate folder, find latest v### that has frames under .../exr/[WxH]/ or .../exr/
     for bg_dir in bg_dirs:

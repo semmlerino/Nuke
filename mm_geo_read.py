@@ -20,16 +20,16 @@ Usage:
     mm_geo_read.run()  # Creates Read node for latest geo render
 """
 
-import os
 import re
 from pathlib import Path
-from typing import Optional
+from typing import NoReturn
+
 import nuke
 
 from pipeline_config import PipelineConfig
 
 
-def _err(msg: str) -> None:
+def _err(msg: str) -> NoReturn:
     """
     Display error message to user and raise RuntimeError.
 
@@ -92,7 +92,7 @@ def _scan_seq(
     dir_path: Path,
     shot: str,
     vnum: str
-) -> Optional[tuple[str, str, int, int, int, list[Path]]]:
+) -> tuple[str, str, int, int, int, list[Path]] | None:
     """
     Scan directory for image sequences matching the shot and version.
 
@@ -173,7 +173,7 @@ def _maybe_set_format_from_res(read_node: nuke.Node, seq_dir: Path) -> None:
         For path: .../v001/geoRender/4096x2268/
         Creates format: "4096x2268_from_geo"
     """
-    def wh(name: Optional[str]) -> tuple[Optional[int], Optional[int]]:
+    def wh(name: str | None) -> tuple[int | None, int | None]:
         """Extract width and height from string like '4096x2268'."""
         m = re.match(r"^(\d+)x(\d+)$", name or "")
         return (int(m.group(1)), int(m.group(2))) if m else (None, None)
@@ -223,7 +223,7 @@ def create_latest_geo_read_hash() -> nuke.Node:
     """
     # Save the currently selected node to connect to it later
     selected_nodes = nuke.selectedNodes()
-    source_node: Optional[nuke.Node] = selected_nodes[0] if selected_nodes else None
+    source_node: nuke.Node | None = selected_nodes[0] if selected_nodes else None
 
     nk_path = nuke.root().name()
     if not nk_path or nk_path == "Root":
@@ -253,9 +253,9 @@ def create_latest_geo_read_hash() -> nuke.Node:
         _err(f"No version folders under:\n{renders_root}")
     vdirs.sort(key=lambda d: _version_num(d.name), reverse=True)
 
-    chosen: Optional[tuple[str, str, int, int, int, list[Path]]] = None
-    chosen_v: Optional[str] = None
-    seq_dir_for_format: Optional[Path] = None
+    chosen: tuple[str, str, int, int, int, list[Path]] | None = None
+    chosen_v: str | None = None
+    seq_dir_for_format: Path | None = None
 
     # Search latest versions first
     for vdir in vdirs:
@@ -270,7 +270,7 @@ def create_latest_geo_read_hash() -> nuke.Node:
             continue
 
         # 1) Scan directly in each geo*/ directory
-        found: Optional[tuple[Path, tuple[str, str, int, int, int, list[Path]]]] = None
+        found: tuple[Path, tuple[str, str, int, int, int, list[Path]]] | None = None
         for gdir in geo_dirs:
             hit = _scan_seq(gdir, shot, vnum)
             if hit:

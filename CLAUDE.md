@@ -52,7 +52,7 @@ All scripts parse this structure from `nuke.root().name()` to infer show/shot co
 
 ### Auto-Connection Pattern
 
-**Critical Pattern:** ALL scripts auto-connect created nodes to the selected node:
+**Most scripts auto-connect created nodes to the selected node:**
 
 ```python
 # Save selection before operations that clear it
@@ -64,12 +64,18 @@ if source_node:
     new_node.setInput(0, source_node)
 ```
 
-**All scripts use this pattern:**
+**Scripts that auto-connect:**
 - `mm_geo_read.py` - Connects Read to selected node
 - `mm_plate_read.py` - Connects Read to selected node
 - `mm_playblast_read.py` - Connects Read to selected node (affects Wireframe/Cones)
 - `mm_write_altplates.py` - Connects Write to selected node
 - `mm_ld_import.py` - Connects pasted LD group to selected node
+
+**Scripts that create independent trees (no auto-connection):**
+- `mm_wireframe_export_setup.py` - Creates standalone 6-node export pipeline
+- `mm_slapcomp_export_setup.py` - Creates standalone dual-pipeline export tree
+
+These export setup scripts intentionally build complete node trees that don't connect to existing work.
 
 ## Nuke-Specific Development Patterns
 

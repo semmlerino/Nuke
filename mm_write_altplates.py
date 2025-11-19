@@ -30,13 +30,14 @@ Usage:
 
 import re
 from pathlib import Path
-from typing import Optional
+from typing import NoReturn
+
 import nuke
 
 from pipeline_config import PipelineConfig
 
 
-def _err(msg: str) -> None:
+def _err(msg: str) -> NoReturn:
     """
     Display error message to user and raise RuntimeError.
 
@@ -92,7 +93,7 @@ def _sanitize_name(name: str) -> str:
     return name if name else "Graded"
 
 
-def _get_selected_node() -> Optional[nuke.Node]:
+def _get_selected_node() -> nuke.Node | None:
     """
     Get the currently selected node.
 

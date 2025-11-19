@@ -31,10 +31,11 @@ Usage:
     mm_ld_import.run()  # Pastes latest LD .nk and connects to selected node
 """
 
-import re
 import os
+import re
 from pathlib import Path
-from typing import Optional
+from typing import NoReturn
+
 import nuke
 
 from pipeline_config import PipelineConfig
@@ -45,7 +46,7 @@ LD_TAIL_RX = re.compile(r'_LD_v(\d+)\.nk$', re.IGNORECASE)
 TURNOVER_RX_TMPL = r'^{plate}_{shot}_turnover-plate_{plate}_.+$'  # folder name pattern
 
 
-def _err(msg: str) -> None:
+def _err(msg: str) -> NoReturn:
     """
     Display error message to user and raise RuntimeError.
 
@@ -90,7 +91,7 @@ def _vnum(s: str) -> int:
     return int(m.group(1)) if m else -1
 
 
-def _detect_plate_from_reads() -> Optional[str]:
+def _detect_plate_from_reads() -> str | None:
     """
     Detect plate ID from existing Read nodes in the current Nuke script.
 
@@ -125,7 +126,7 @@ def _detect_plate_from_reads() -> Optional[str]:
     return None
 
 
-def _detect_plate_from_nkpath(parts: tuple[str, ...]) -> Optional[str]:
+def _detect_plate_from_nkpath(parts: tuple[str, ...]) -> str | None:
     """
     Detect plate ID from .nk path segments.
 
@@ -209,7 +210,7 @@ def _find_latest_ld_under(
     plate_dir: Path,
     shot: str,
     plate: str
-) -> tuple[Optional[Path], Optional[str]]:
+) -> tuple[Path | None, str | None]:
     """
     Find the latest lens distortion .nk file under a plate directory.
 
@@ -258,10 +259,10 @@ def _find_latest_ld_under(
     )
     plate_rx_inline = re.compile(re.escape(plate), re.IGNORECASE)
 
-    best: Optional[Path] = None
-    best_v: Optional[str] = None
-    best_score: Optional[int] = None
-    best_mtime: Optional[float] = None
+    best: Path | None = None
+    best_v: str | None = None
+    best_score: int | None = None
+    best_mtime: float | None = None
 
     # Search latest versions first
     for vdir in vdirs:
@@ -367,9 +368,9 @@ def import_latest_ld_nk() -> list[nuke.Node]:
         _err(f"No plate folders found under:\n{scene_root}")
 
     # Search for LD file in order of plate preference
-    chosen_file: Optional[Path] = None
-    chosen_v: Optional[str] = None
-    chosen_plate: Optional[str] = None
+    chosen_file: Path | None = None
+    chosen_v: str | None = None
+    chosen_plate: str | None = None
 
     for pid in plate_candidates:
         ld_file, vnum = _find_latest_ld_under(scene_root / pid, shot, pid)
@@ -382,7 +383,7 @@ def import_latest_ld_nk() -> list[nuke.Node]:
 
     # Save the currently selected node to connect to it later
     selected_before_paste = nuke.selectedNodes()
-    source_node: Optional[nuke.Node] = selected_before_paste[0] if selected_before_paste else None
+    source_node: nuke.Node | None = selected_before_paste[0] if selected_before_paste else None
 
     # Paste into the graph
     for n in nuke.selectedNodes():
@@ -392,7 +393,7 @@ def import_latest_ld_nk() -> list[nuke.Node]:
     pasted = nuke.selectedNodes()
 
     # Give the primary Group/LiveGroup a stable name with plate & version
-    main: Optional[nuke.Node] = None
+    main: nuke.Node | None = None
     for n in pasted:
         if n.Class() in ("Group", "LiveGroup"):
             main = n

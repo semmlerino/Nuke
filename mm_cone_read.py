@@ -22,6 +22,7 @@ Usage:
 """
 
 import nuke
+
 from mm_playblast_read import create_latest_playblast_read
 
 

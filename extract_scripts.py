@@ -13,7 +13,7 @@ def clean_text(text: str) -> str:
     return text
 
 
-def extract_filename(script_content: str) -> str:
+def extract_filename(script_content: str) -> str | None:
     """Extract filename from script header comment."""
     lines = script_content.strip().split('\n')
     for line in lines[:5]:  # Check first 5 lines
@@ -38,7 +38,7 @@ def main():
 
     for encoding in encodings:
         try:
-            with open(script_file, 'r', encoding=encoding) as f:
+            with open(script_file, encoding=encoding) as f:
                 raw_content = f.read()
             print(f"Successfully read with encoding: {encoding}")
             break

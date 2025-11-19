@@ -1,15 +1,12 @@
 """
-mm_wireframe_export_setup.py
+mm_slapcomp_export_setup.py
 
-Create a complete node tree for playblast export with lens distortion.
+Create dual-export slap comp setup with Cones and Wireframe playblast pipelines.
 
-This script automates the setup of a full export pipeline including:
-- Playblast Read (PNG/movie from playblast/{category}/v###/)
-- Transform (scale 1.1, center 2156 1152)
-- 3DE lens distortion group (pasted from LD .nk file)
-- Raw plate Read (EXR from plate/input_plate/{PLATE}/v###/)
-- Merge (A=Plate, B=Playblast+LD)
-- WriteTank (farm export configured for Camera Elements)
+This script automates the setup of TWO complete export pipelines sharing a single plate:
+- Shared: Raw plate Read node (EXR)
+- Cones pipeline: Playblast Read → Transform → LD → Merge → Crop → WriteTank
+- Wireframe pipeline: Playblast Read → Transform → LD → Merge → Crop → WriteTank
 
 Path structures:
     Playblast: /shows/<show>/shots/<seq>/<shot>/user/<user>/mm/maya/playblast/{category}/v###/
@@ -17,11 +14,11 @@ Path structures:
     LD: /shows/<show>/shots/<seq>/<shot>/user/<user>/mm/3de/mm-default/exports/scene/<PLATE>/nuke_lens_distortion/v###/
 
 Usage:
-    import mm_wireframe_export_setup
-    mm_wireframe_export_setup.run()  # Creates Wireframe export tree
+    import mm_slapcomp_export_setup
+    mm_slapcomp_export_setup.run()  # Creates both Cones + Wireframe export trees
 
-    # Or for Cones:
-    mm_wireframe_export_setup.create_playblast_export_setup(category="Cones")
+Hotkey:
+    Ctrl+Alt+Shift+S (registered in menu.py)
 """
 
 import os
@@ -109,6 +106,8 @@ def _infer_context_from_nk() -> tuple[str, str, str, str]:
         user = parts[i_user+1]
     except Exception:
         _err("Path didn't have enough segments after /shows or /shots or /user.")
+        # _err raises RuntimeError, so this is unreachable
+        raise AssertionError("Unreachable")
 
     return show, seq, shot, user
 
@@ -234,10 +233,11 @@ def _find_latest_playblast(
             chosen_v = vdir.name[1:].zfill(3)
             break
 
-    if not chosen:
+    if not chosen or not chosen_v:
         _err(f"No sequences or movies matching '{category}' found under versions in:\\n{cat_dir}")
+        # _err raises RuntimeError, so this is unreachable
+        raise AssertionError("Unreachable")
 
-    assert chosen_v is not None  # Set when chosen is set
     return chosen, chosen_v
 
 
@@ -246,24 +246,6 @@ def _find_latest_playblast(
 # ============================================================================
 
 PLATE_RX = re.compile(r'\\b([A-Z]{2}\\d{2})\\b', re.IGNORECASE)
-
-
-def _norm_plate_token(tok: str) -> str | None:
-    """
-    Normalize plate token to standard format.
-
-    Args:
-        tok: Token to normalize (e.g., "fg1", "FG01")
-
-    Returns:
-        Normalized plate ID (e.g., "FG01") or None if invalid
-    """
-    m = re.match(r"^([A-Za-z]{2})(\\d{1,2})$", tok)
-    if not m:
-        return None
-    letters = m.group(1).upper()
-    digits = f"{int(m.group(2)):02d}"
-    return f"{letters}{digits}"
 
 
 def _detect_plate_from_reads() -> str | None:
@@ -464,13 +446,14 @@ def _find_latest_plate(
         if chosen:
             break
 
-    if not chosen:
+    if not chosen or not chosen_v or not chosen_bg:
         _err("No plate sequences found under:\\n" + str(plate_root))
+        # _err raises RuntimeError, so this is unreachable
+        raise AssertionError("Unreachable")
 
     # Unpack results
     best_prefix, ext, fmin, fmax, pad, _files = chosen
 
-    assert chosen_v is not None and chosen_bg is not None  # Set when chosen is set
     return best_prefix, ext, fmin, fmax, pad, chosen_v, chosen_bg
 
 
@@ -628,10 +611,11 @@ def _find_latest_ld(
             chosen_file, chosen_v, chosen_plate = ld_file, vnum, pid
             break
 
-    if not chosen_file:
+    if not chosen_file or not chosen_v or not chosen_plate:
         _err("No 3DE LD .nk found under any plate folder in:\\n" + str(scene_root))
+        # _err raises RuntimeError, so this is unreachable
+        raise AssertionError("Unreachable")
 
-    assert chosen_v is not None and chosen_plate is not None  # Set when chosen_file is set
     return chosen_file, chosen_v, chosen_plate
 
 
@@ -639,43 +623,57 @@ def _find_latest_ld(
 # MAIN SETUP FUNCTION
 # ============================================================================
 
-def create_playblast_export_setup(category: str = "Wireframe") -> dict[str, nuke.Node]:
+def create_slapcomp_export_setup() -> dict[str, dict[str, nuke.Node]]:
     """
-    Create a complete node tree for playblast export with lens distortion.
+    Create dual-export slap comp setup (Cones + Wireframe) sharing one plate.
 
-    Creates an independent 6-node export pipeline:
+    Creates a shared raw plate Read node that feeds into TWO complete export pipelines:
+
+    Architecture:
+        [Shared Plate Read (EXR)]
+              ↓         ↓
+        [Cones Pipeline] [Wireframe Pipeline]
+
+    Each pipeline consists of:
     1. Read node for playblast (PNG/movie)
     2. Transform node (scale 1.1, center 2156 1152)
     3. LD_3DE lens distortion group (pasted from .nk)
-    4. Read node for raw plate (EXR)
-    5. Merge node (A=Plate, B=Playblast+LD)
+    4. Merge node (A=Shared Plate, B=Playblast+LD)
+    5. Crop node
     6. WriteTank node (configured for Camera Elements export)
-
-    This creates a standalone node tree, not connected to any existing nodes.
-
-    Args:
-        category: Playblast category to use (default: "Wireframe")
-            Common values: "Wireframe", "Cones"
 
     Returns:
         Dictionary of created nodes:
             {
-                "playblast_read": Read node,
-                "transform": Transform node,
-                "ld_group": LD group node,
-                "plate_read": Read node,
-                "merge": Merge node,
-                "write_tank": WriteTank node
+                "shared": {
+                    "plate_read": Read node
+                },
+                "Cones": {
+                    "playblast_read": Read node,
+                    "transform": Transform node,
+                    "ld_group": LD group node,
+                    "merge": Merge node,
+                    "crop": Crop node,
+                    "write_tank": WriteTank node
+                },
+                "Wireframe": {
+                    "playblast_read": Read node,
+                    "transform": Transform node,
+                    "ld_group": LD group node,
+                    "merge": Merge node,
+                    "crop": Crop node,
+                    "write_tank": WriteTank node
+                }
             }
 
     Raises:
         RuntimeError: If script not saved, or any required files not found
 
     Example:
-        >>> nodes = create_playblast_export_setup(category="Wireframe")
-        >>> # Creates complete export tree for Wireframe playblast
+        >>> nodes = create_slapcomp_export_setup()
+        >>> # Creates complete dual-export tree (Cones + Wireframe)
     """
-    nuke.tprint(f"[Export Setup] Creating {category} export pipeline...")
+    nuke.tprint("[Slap Comp] Creating dual-export setup (Cones + Wireframe)...")
 
     # Parse context
     show, seq, shot, user = _infer_context_from_nk()
@@ -686,20 +684,16 @@ def create_playblast_export_setup(category: str = "Wireframe") -> dict[str, nuke
     if not plate_id:
         plate_id = _detect_plate_from_nkpath(tuple(s.lower() for s in nk_parts))
 
-    nuke.tprint(f"[Export Setup] Detected plate ID: {plate_id or '(auto-detect from available plates)'}")
+    nuke.tprint(f"[Slap Comp] Detected plate ID: {plate_id or '(auto-detect from available plates)'}")
 
-    # Find latest playblast
-    nuke.tprint(f"[Export Setup] Finding latest {category} playblast...")
-    playblast_data, playblast_v = _find_latest_playblast(show, seq, shot, user, category)
-
-    # Find latest plate
-    nuke.tprint("[Export Setup] Finding latest plate...")
+    # Find latest plate (shared resource)
+    nuke.tprint("[Slap Comp] Finding latest plate...")
     plate_prefix, plate_ext, plate_fmin, plate_fmax, plate_pad, plate_v, plate_bg = _find_latest_plate(
         show, seq, shot, plate_id
     )
 
-    # Find latest LD
-    nuke.tprint("[Export Setup] Finding latest LD file...")
+    # Find latest LD (shared detection, pasted separately for each pipeline)
+    nuke.tprint("[Slap Comp] Finding latest LD file...")
     ld_file, ld_v, ld_plate = _find_latest_ld(show, seq, shot, user, plate_bg)
 
     # Clear selection
@@ -707,120 +701,9 @@ def create_playblast_export_setup(category: str = "Wireframe") -> dict[str, nuke
         n.setSelected(False)
 
     # ========================================================================
-    # 1. CREATE PLAYBLAST READ NODE
+    # CREATE SHARED PLATE READ NODE
     # ========================================================================
-    nuke.tprint(f"[Export Setup] Creating {category} Read node...")
-
-    if playblast_data["type"] == "sequence":
-        best_prefix = playblast_data["best_prefix"]
-        ext = playblast_data["ext"]
-        fmin = playblast_data["fmin"]
-        fmax = playblast_data["fmax"]
-        pad = playblast_data["pad"]
-
-        hashes = "#" * pad
-        hash_pattern = f"{best_prefix}.{hashes}.{ext}"
-        first_frame_path = f"{best_prefix}.{str(fmin).zfill(pad)}.{ext}"
-
-        playblast_read = nuke.nodes.Read()
-        playblast_read["name"].setValue(f"Read_playblast_{category}_v{playblast_v}")
-
-        # Load real frame first, then hash pattern
-        playblast_read["file"].fromUserText(first_frame_path)
-        playblast_read["file"].fromUserText(hash_pattern)
-
-        # Set frame range
-        for knob, val in (("first", fmin), ("last", fmax), ("origfirst", fmin), ("origlast", fmax)):
-            try:
-                playblast_read[knob].setValue(int(val))
-            except Exception:
-                pass
-
-        # PNG/JPG: leave colorspace to project defaults; EXR: set raw/linear
-        if ext.lower() == "exr":
-            for k, v in (("file_type", "exr"), ("colorspace", "linear")):
-                try:
-                    playblast_read[k].setValue(v)
-                except Exception:
-                    pass
-            try:
-                playblast_read["raw"].setValue(True)
-            except Exception:
-                pass
-
-        try:
-            playblast_read["reload"].execute()
-        except Exception:
-            pass
-
-    elif playblast_data["type"] == "movie":
-        movie_path = playblast_data["path"]
-
-        playblast_read = nuke.nodes.Read()
-        playblast_read["name"].setValue(f"Read_playblast_{category}_v{playblast_v}")
-        playblast_read["file"].fromUserText(movie_path)
-
-        try:
-            playblast_read["reload"].execute()
-        except Exception:
-            pass
-
-    else:
-        _err("Internal error: unknown playblast type.")
-
-    # ========================================================================
-    # 2. CREATE TRANSFORM NODE
-    # ========================================================================
-    nuke.tprint("[Export Setup] Creating Transform node...")
-
-    transform = nuke.nodes.Transform()
-    transform["name"].setValue("Transform_WireframeScale")
-    try:
-        transform["scale"].setValue(1.1)
-    except Exception:
-        pass
-    try:
-        transform["center"].setValue([2156, 1152])
-    except Exception:
-        pass
-
-    # Connect to playblast
-    transform.setInput(0, playblast_read)
-
-    # ========================================================================
-    # 3. PASTE LD .NK FILE
-    # ========================================================================
-    nuke.tprint(f"[Export Setup] Pasting LD file: {ld_file.name}")
-
-    for n in nuke.selectedNodes():
-        n.setSelected(False)
-
-    nuke.nodePaste(str(ld_file))
-    pasted = nuke.selectedNodes()
-
-    # Find the primary Group/LiveGroup
-    ld_group: nuke.Node | None = None
-    for n in pasted:
-        if n.Class() in ("Group", "LiveGroup"):
-            ld_group = n
-            break
-
-    if not ld_group:
-        _err(f"No Group/LiveGroup found in pasted LD file:\\n{ld_file}")
-
-    # Rename LD group
-    try:
-        ld_group.setName(f"LD_3DE_{ld_plate}_v{ld_v}", unique=False)
-    except Exception:
-        pass
-
-    # Connect to transform
-    ld_group.setInput(0, transform)
-
-    # ========================================================================
-    # 4. CREATE PLATE READ NODE
-    # ========================================================================
-    nuke.tprint("[Export Setup] Creating plate Read node...")
+    nuke.tprint("[Slap Comp] Creating shared plate Read node...")
 
     plate_hashes = "#" * plate_pad
     plate_hash_pattern = f"{plate_prefix}.{plate_hashes}.{plate_ext}"
@@ -860,94 +743,275 @@ def create_playblast_export_setup(category: str = "Wireframe") -> dict[str, nuke
     except Exception:
         pass
 
-    # ========================================================================
-    # 5. CREATE MERGE NODE
-    # ========================================================================
-    nuke.tprint("[Export Setup] Creating Merge node...")
-
-    merge = nuke.nodes.Merge2()
-    merge["name"].setValue("Merge_WireframePlate")
-
-    # Connect inputs: A=Plate (foreground), B=Wireframe+LD (background)
-    merge.setInput(0, ld_group)  # B input (background)
-    merge.setInput(1, plate_read)  # A input (foreground)
+    # Position plate Read node
+    plate_read.setXYpos(200, -200)
 
     # ========================================================================
-    # 6. CREATE WRITETANK NODE
+    # CREATE DUAL EXPORT PIPELINES
     # ========================================================================
-    nuke.tprint("[Export Setup] Creating WriteTank node...")
 
-    # Check if WriteTank exists
-    try:
-        write_tank = nuke.nodes.WriteTank()
-    except Exception:
-        _err("WriteTank node type not found.\\nThis node requires Shotgun/Flow toolkit integration.")
-
-    write_tank["name"].setValue("WriteTank_WireframeExport")
-
-    # Connect to merge
-    write_tank.setInput(0, merge)
-
-    # Configure WriteTank - match example settings
-    try:
-        write_tank["profile_name"].setValue("Camera Elements")
-    except Exception:
-        pass
-
-    try:
-        write_tank["custom_knob_camera_element"].setValue("lineupGeo")
-    except Exception:
-        pass
-
-    # Colorspace settings
-    try:
-        write_tank["colorspace"].setValue("lin_sgamut3cine")
-    except Exception:
-        pass
-
-    # File type
-    try:
-        write_tank["file_type"].setValue("exr")
-    except Exception:
-        pass
-
-    # Channels
-    try:
-        write_tank["channels"].setValue("rgb")
-    except Exception:
-        pass
-
-    nuke.tprint("[Export Setup] ✓ Complete! Created 6-node export pipeline")
-    nuke.tprint(f"[Export Setup]   • Playblast: {category} v{playblast_v}")
-    nuke.tprint(f"[Export Setup]   • Plate: {plate_bg} v{plate_v}")
-    nuke.tprint(f"[Export Setup]   • LD: {ld_plate} v{ld_v}")
-
-    return {
-        "playblast_read": playblast_read,
-        "transform": transform,
-        "ld_group": ld_group,
-        "plate_read": plate_read,
-        "merge": merge,
-        "write_tank": write_tank,
+    categories = ["Cones", "Wireframe"]
+    category_element_map = {
+        "Cones": "cones",
+        "Wireframe": "lineupGeo"
     }
 
+    # Position offsets for each pipeline
+    category_x_offset = {
+        "Cones": -200,  # Left side
+        "Wireframe": 400  # Right side
+    }
 
-def run() -> dict[str, nuke.Node]:
+    results: dict[str, dict[str, nuke.Node]] = {
+        "shared": {"plate_read": plate_read}
+    }
+
+    for category in categories:
+        nuke.tprint(f"[Slap Comp] Creating {category} pipeline...")
+
+        # Find latest playblast for this category
+        playblast_data, playblast_v = _find_latest_playblast(show, seq, shot, user, category)
+
+        # Get position offset
+        x_offset = category_x_offset[category]
+
+        # ====================================================================
+        # 1. CREATE PLAYBLAST READ NODE
+        # ====================================================================
+
+        if playblast_data["type"] == "sequence":
+            best_prefix = playblast_data["best_prefix"]
+            ext = playblast_data["ext"]
+            fmin = playblast_data["fmin"]
+            fmax = playblast_data["fmax"]
+            pad = playblast_data["pad"]
+
+            hashes = "#" * pad
+            hash_pattern = f"{best_prefix}.{hashes}.{ext}"
+            first_frame_path = f"{best_prefix}.{str(fmin).zfill(pad)}.{ext}"
+
+            playblast_read = nuke.nodes.Read()
+            playblast_read["name"].setValue(f"Read_playblast_{category}_v{playblast_v}")
+
+            # Load real frame first, then hash pattern
+            playblast_read["file"].fromUserText(first_frame_path)
+            playblast_read["file"].fromUserText(hash_pattern)
+
+            # Set frame range
+            for knob, val in (("first", fmin), ("last", fmax), ("origfirst", fmin), ("origlast", fmax)):
+                try:
+                    playblast_read[knob].setValue(int(val))
+                except Exception:
+                    pass
+
+            # PNG/JPG: leave colorspace to project defaults; EXR: set raw/linear
+            if ext.lower() == "exr":
+                for k, v in (("file_type", "exr"), ("colorspace", "linear")):
+                    try:
+                        playblast_read[k].setValue(v)
+                    except Exception:
+                        pass
+                try:
+                    playblast_read["raw"].setValue(True)
+                except Exception:
+                    pass
+
+            try:
+                playblast_read["reload"].execute()
+            except Exception:
+                pass
+
+        elif playblast_data["type"] == "movie":
+            movie_path = playblast_data["path"]
+
+            playblast_read = nuke.nodes.Read()
+            playblast_read["name"].setValue(f"Read_playblast_{category}_v{playblast_v}")
+            playblast_read["file"].fromUserText(movie_path)
+
+            try:
+                playblast_read["reload"].execute()
+            except Exception:
+                pass
+
+        else:
+            _err("Internal error: unknown playblast type.")
+            # _err raises RuntimeError, so this is unreachable
+            raise AssertionError("Unreachable")
+
+        # Position playblast Read
+        playblast_read.setXYpos(x_offset, -300)
+
+        # ====================================================================
+        # 2. CREATE TRANSFORM NODE
+        # ====================================================================
+
+        transform = nuke.nodes.Transform()
+        transform["name"].setValue(f"Transform_{category}Scale")
+        try:
+            transform["scale"].setValue(1.1)
+        except Exception:
+            pass
+        try:
+            transform["center"].setValue([2156, 1152])
+        except Exception:
+            pass
+
+        # Connect to playblast
+        transform.setInput(0, playblast_read)
+
+        # Position Transform
+        transform.setXYpos(x_offset, -200)
+
+        # ====================================================================
+        # 3. PASTE LD .NK FILE
+        # ====================================================================
+
+        # Clear selection before paste
+        for n in nuke.selectedNodes():
+            n.setSelected(False)
+
+        nuke.nodePaste(str(ld_file))
+        pasted = nuke.selectedNodes()
+
+        # Find the primary Group/LiveGroup
+        ld_group: nuke.Node | None = None
+        for n in pasted:
+            if n.Class() in ("Group", "LiveGroup"):
+                ld_group = n
+                break
+
+        if not ld_group:
+            _err(f"No Group/LiveGroup found in pasted LD file:\\n{ld_file}")
+            # _err raises RuntimeError, so this is unreachable
+            raise AssertionError("Unreachable")
+
+        # Rename LD group
+        try:
+            ld_group.setName(f"LD_3DE_{ld_plate}_{category}_v{ld_v}", unique=False)
+        except Exception:
+            pass
+
+        # Connect to transform
+        ld_group.setInput(0, transform)
+
+        # Position LD group
+        ld_group.setXYpos(x_offset, -100)
+
+        # ====================================================================
+        # 4. CREATE MERGE NODE
+        # ====================================================================
+
+        merge = nuke.nodes.Merge2()
+        merge["name"].setValue(f"Merge_{category}Plate")
+
+        # Connect inputs: A=Plate (foreground), B=Playblast+LD (background)
+        merge.setInput(0, ld_group)      # B input (background)
+        merge.setInput(1, plate_read)    # A input (foreground)
+
+        # Position Merge
+        merge.setXYpos(x_offset, 0)
+
+        # ====================================================================
+        # 5. CREATE CROP NODE
+        # ====================================================================
+
+        crop = nuke.nodes.Crop()
+        crop["name"].setValue(f"Crop_{category}")
+
+        # Set crop box to full frame
+        try:
+            crop["box"].setValue([0, 0, nuke.root().width(), nuke.root().height()])
+        except Exception:
+            pass
+
+        # Connect to merge
+        crop.setInput(0, merge)
+
+        # Position Crop
+        crop.setXYpos(x_offset, 50)
+
+        # ====================================================================
+        # 6. CREATE WRITETANK NODE
+        # ====================================================================
+
+        # Check if WriteTank exists
+        try:
+            write_tank = nuke.nodes.WriteTank()
+        except Exception:
+            _err("WriteTank node type not found.\\nThis node requires Shotgun/Flow toolkit integration.")
+            # _err raises RuntimeError, so this is unreachable
+            raise AssertionError("Unreachable")
+
+        write_tank["name"].setValue(f"WriteTank_{category}Export")
+
+        # Connect to crop
+        write_tank.setInput(0, crop)
+
+        # Configure WriteTank - match example settings
+        try:
+            write_tank["profile_name"].setValue("Camera Elements")
+        except Exception:
+            pass
+
+        # Set category-specific camera_element value
+        camera_element = category_element_map[category]
+        try:
+            write_tank["custom_knob_camera_element"].setValue(camera_element)
+        except Exception:
+            pass
+
+        # Colorspace settings
+        try:
+            write_tank["colorspace"].setValue("lin_sgamut3cine")
+        except Exception:
+            pass
+
+        # File type
+        try:
+            write_tank["file_type"].setValue("exr")
+        except Exception:
+            pass
+
+        # Channels
+        try:
+            write_tank["channels"].setValue("rgb")
+        except Exception:
+            pass
+
+        # Position WriteTank
+        write_tank.setXYpos(x_offset, 100)
+
+        # Store results for this category
+        results[category] = {
+            "playblast_read": playblast_read,
+            "transform": transform,
+            "ld_group": ld_group,
+            "merge": merge,
+            "crop": crop,
+            "write_tank": write_tank,
+        }
+
+        nuke.tprint(f"[Slap Comp] ✓ {category} pipeline complete")
+
+    nuke.tprint("[Slap Comp] ✓✓ COMPLETE! Created dual-export setup")
+    nuke.tprint(f"[Slap Comp]   • Shared Plate: {plate_bg} v{plate_v}")
+    nuke.tprint(f"[Slap Comp]   • LD: {ld_plate} v{ld_v}")
+
+    return results
+
+
+def run() -> dict[str, dict[str, nuke.Node]]:
     """
     Stable entry point for menus and hotkeys.
 
-    Creates Wireframe playblast export setup by default.
+    Creates dual-export slap comp setup (Cones + Wireframe) sharing one plate.
 
     Returns:
-        Dictionary of created nodes
+        Dictionary of created nodes grouped by category
 
     Example:
         # From menu.py or Script Editor:
-        import mm_wireframe_export_setup
-        mm_wireframe_export_setup.run()  # Creates Wireframe export tree
-
-        # For Cones:
-        import mm_wireframe_export_setup
-        mm_wireframe_export_setup.create_playblast_export_setup(category="Cones")
+        import mm_slapcomp_export_setup
+        mm_slapcomp_export_setup.run()  # Creates Cones + Wireframe export trees
     """
-    return create_playblast_export_setup(category="Wireframe")
+    return create_slapcomp_export_setup()

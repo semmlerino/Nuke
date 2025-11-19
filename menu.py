@@ -15,6 +15,7 @@ Registered Hotkeys:
     Ctrl+Alt+B: Create Read node for latest Wireframe playblast
     Ctrl+Alt+W: Create Write node for alternate plates
     Ctrl+Alt+Shift+W: Create complete Wireframe export setup (6-node tree)
+    Ctrl+Alt+Shift+S: Create slap comp export setup (Cones + Wireframe dual-export)
 
 Required Scripts:
     - mm_cone_read.py
@@ -24,14 +25,15 @@ Required Scripts:
     - mm_playblast_read.py
     - mm_write_altplates.py
     - mm_wireframe_export_setup.py
+    - mm_slapcomp_export_setup.py
 
 Usage:
     Place this file at ~/.nuke/menu.py
     Nuke will load it automatically on startup
 """
 
+
 import nuke
-from typing import Set, Tuple
 
 # Command strings for hotkeys
 # Each imports the module, reloads it (for development), and runs it
@@ -70,10 +72,15 @@ cmd_wireframe_export: str = (
     "importlib.reload(mm_wireframe_export_setup); "
     "mm_wireframe_export_setup.run()"
 )
+cmd_slapcomp: str = (
+    "import importlib, mm_slapcomp_export_setup; "
+    "importlib.reload(mm_slapcomp_export_setup); "
+    "mm_slapcomp_export_setup.run()"
+)
 
 # Initialize hotkey tracking on nuke module (persists across reloads)
 if not hasattr(nuke, "_bb_hotkeys_bound"):
-    nuke._bb_hotkeys_bound: Set[Tuple[str, str]] = set()
+    nuke._bb_hotkeys_bound = set()  # type: ignore[attr-defined]
 
 
 def add_hidden_hotkey_once(label: str, command: str, shortcut: str) -> None:
@@ -117,3 +124,4 @@ add_hidden_hotkey_once("Import 3DE LD .nk", cmd_ld, "ctrl+alt+l")
 add_hidden_hotkey_once("Latest Wireframe Read", cmd_playblast, "ctrl+alt+b")
 add_hidden_hotkey_once("Write AltPlates", cmd_write_alt, "ctrl+alt+w")
 add_hidden_hotkey_once("Wireframe Export Setup", cmd_wireframe_export, "ctrl+alt+shift+w")
+add_hidden_hotkey_once("Slap Comp Export Setup", cmd_slapcomp, "ctrl+alt+shift+s")
