@@ -360,7 +360,7 @@ def import_latest_ld_nk() -> list[nuke.Node]:
     if p_from_nk and p_from_nk not in plate_candidates:
         plate_candidates.append(p_from_nk)
 
-    for d, pid in _collect_plate_dirs(scene_root):
+    for _d, pid in _collect_plate_dirs(scene_root):
         if pid not in plate_candidates:
             plate_candidates.append(pid)
 

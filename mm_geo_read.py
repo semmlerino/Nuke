@@ -219,12 +219,7 @@ def create_latest_geo_read_hash() -> nuke.Node:
     Example:
         Creates node named "Read_geoRender_v003" pointing to:
         /shows/demo/.../v003/geoRender/4096x2268/shot_scene_geoRender_v003.####.exr
-        And connects to the selected node if one was selected
     """
-    # Save the currently selected node to connect to it later
-    selected_nodes = nuke.selectedNodes()
-    source_node: nuke.Node | None = selected_nodes[0] if selected_nodes else None
-
     nk_path = nuke.root().name()
     if not nk_path or nk_path == "Root":
         _err("Please save the Nuke script first so I can infer the shot path.")
@@ -339,13 +334,8 @@ def create_latest_geo_read_hash() -> nuke.Node:
     except Exception:
         pass
 
-    # Connect to selected node if one was selected
-    if source_node:
-        try:
-            r.setInput(0, source_node)
-            nuke.tprint(f"[geo] Connected to: {source_node.name()}")
-        except Exception as e:
-            nuke.tprint(f"[geo] Warning: Could not connect to {source_node.name()}: {e}")
+    # Note: Read nodes are source nodes and don't have inputs.
+    # Auto-connection is not applicable for Read nodes.
 
     nuke.tprint(f"[geo] Created Read: {hash_pattern}")
     nuke.tprint(f"[geo] Version v{chosen_v}  Frames: {fmin}-{fmax}  Pad: {pad}")

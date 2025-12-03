@@ -326,12 +326,7 @@ def create_latest_plate_read_hash() -> nuke.Node:
     Example:
         Creates node named "Read_rawPlate_FG01_v002" pointing to:
         /shows/demo/.../FG01/v002/exr/4448x3096/shot_turnover-plate_FG01_linear_v002.####.exr
-        And connects to the selected node if one was selected
     """
-    # Save the currently selected node to connect to it later
-    selected_nodes = nuke.selectedNodes()
-    source_node: nuke.Node | None = selected_nodes[0] if selected_nodes else None
-
     nk_path = nuke.root().name()
     if not nk_path or nk_path == "Root":
         _err("Please save the Nuke script first so I can infer the shot path.")
@@ -363,7 +358,24 @@ def create_latest_plate_read_hash() -> nuke.Node:
     if plate_id and (plate_root / plate_id).exists():
         bg_dirs = [plate_root / plate_id]
     else:
-        bg_dirs = [d for d in plate_root.iterdir() if d.is_dir()]
+        # Sort alphabetically for deterministic fallback
+        bg_dirs = sorted([d for d in plate_root.iterdir() if d.is_dir()])
+
+        # Prompt user when multiple plates found and no plate ID detected
+        if len(bg_dirs) > 1:
+            choices = [d.name for d in bg_dirs]
+            nuke.tprint(f"[plate] Multiple plates found: {', '.join(choices)}")
+
+            panel = nuke.Panel("Select Plate")
+            panel.addEnumerationPulldown("Plate:", " ".join(choices))
+            result = panel.show()
+
+            if not result:
+                _err("Plate selection cancelled by user.")
+
+            selected_plate = panel.value("Plate:")
+            nuke.tprint(f"[plate] User selected: {selected_plate}")
+            bg_dirs = [plate_root / selected_plate]
 
     chosen: tuple[str, str, int, int, int, list[Path]] | None = None
     chosen_v: str | None = None
@@ -409,7 +421,8 @@ def create_latest_plate_read_hash() -> nuke.Node:
 
     # Last resort: wildcard any plate ID across all folders/versions
     if not chosen:
-        for bg_dir in [d for d in plate_root.iterdir() if d.is_dir()]:
+        # Sort alphabetically for deterministic fallback
+        for bg_dir in sorted([d for d in plate_root.iterdir() if d.is_dir()]):
             vdirs = [
                 d for d in bg_dir.iterdir()
                 if d.is_dir() and re.match(r"v\d+$", d.name, re.IGNORECASE)
@@ -492,13 +505,8 @@ def create_latest_plate_read_hash() -> nuke.Node:
     except Exception:
         pass
 
-    # Connect to selected node if one was selected
-    if source_node:
-        try:
-            r.setInput(0, source_node)
-            nuke.tprint(f"[plate] Connected to: {source_node.name()}")
-        except Exception as e:
-            nuke.tprint(f"[plate] Warning: Could not connect to {source_node.name()}: {e}")
+    # Note: Read nodes are source nodes and don't have inputs.
+    # Auto-connection is not applicable for Read nodes.
 
     nuke.tprint(f"[plate] Created Read: {hash_pattern}")
     nuke.tprint(f"[plate] Plate: {chosen_bg}  Version v{chosen_v}  Frames: {fmin}-{fmax}  Pad: {pad}")

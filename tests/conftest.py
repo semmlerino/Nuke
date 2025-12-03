@@ -132,6 +132,12 @@ class MockNode:
         return self._class
 
     def setInput(self, index: int, node: MockNode | None) -> None:
+        """
+        Set node input connection.
+
+        Note: In real Nuke, Read nodes are source nodes and don't have inputs.
+        Calling setInput on a Read node would be silently ignored or raise an error.
+        """
         if index < len(self._inputs):
             self._inputs[index] = node
 
@@ -156,6 +162,11 @@ class MockNode:
     def setYpos(self, y: int) -> None:
         self._ypos = y
 
+    def setXYpos(self, x: int, y: int) -> None:
+        """Set both X and Y position at once."""
+        self._xpos = x
+        self._ypos = y
+
     def knob(self, name: str) -> MockKnob | None:
         return self._knobs.get(name)
 
@@ -166,9 +177,17 @@ class MockRoot(MockNode):
     def __init__(self, script_path: str = "") -> None:
         super().__init__("Root")
         self._script_path = script_path
+        self._width = 1920
+        self._height = 1080
 
     def name(self) -> str:
         return self._script_path
+
+    def width(self) -> int:
+        return self._width
+
+    def height(self) -> int:
+        return self._height
 
 
 class MockNodesFactory:
@@ -216,6 +235,46 @@ class MockNodesFactory:
             node[key].setValue(value)
         return node
 
+    def Crop(self, **kwargs: Any) -> MockNode:
+        node = MockNode("Crop")
+        for key, value in kwargs.items():
+            node[key].setValue(value)
+        return node
+
+
+class MockPanel:
+    """Mock Nuke panel for user dialogs."""
+
+    def __init__(self, title: str) -> None:
+        self._title = title
+        self._knobs: dict[str, Any] = {}
+        self._show_result = True  # Default to user accepting
+
+    def addEnumerationPulldown(self, name: str, options: str) -> None:
+        """Add enumeration pulldown with space-separated options."""
+        option_list = options.split()
+        self._knobs[name] = option_list[0] if option_list else ""
+
+    def addSingleLineInput(self, name: str, default: str = "") -> None:
+        """Add single line text input."""
+        self._knobs[name] = default
+
+    def show(self) -> bool:
+        """Show panel and return True if user accepted."""
+        return self._show_result
+
+    def value(self, name: str) -> Any:
+        """Get value of knob by name."""
+        return self._knobs.get(name, "")
+
+    def _set_show_result(self, result: bool) -> None:
+        """Test helper to set whether show() returns True or False."""
+        self._show_result = result
+
+    def _set_value(self, name: str, value: Any) -> None:
+        """Test helper to set knob value."""
+        self._knobs[name] = value
+
 
 class MockNukeModule:
     """Mock implementation of the nuke module."""
@@ -229,12 +288,19 @@ class MockNukeModule:
         self._message_calls: list[str] = []
         self._pasted_files: list[str] = []
         self._formats: list[str] = []
+        self._panels: list[MockPanel] = []
 
         # Hotkey tracking (used by menu.py)
         self._bb_hotkeys_bound: set[tuple[str, str]] = set()
 
         # Type aliases for type hints in Nuke scripts
         self.Node = MockNode  # type: ignore[assignment]
+
+    def Panel(self, title: str) -> MockPanel:
+        """Create and return a mock panel."""
+        panel = MockPanel(title)
+        self._panels.append(panel)
+        return panel
 
     def root(self) -> MockRoot:
         return self._root
@@ -311,6 +377,7 @@ class MockNukeModule:
         self._tprint_messages = []
         self._message_calls = []
         self._pasted_files = []
+        self._panels = []
         MockNode._node_counter = 0
 
 

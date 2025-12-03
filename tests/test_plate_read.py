@@ -124,88 +124,10 @@ class TestErrorConditions:
             mm_plate_read.run()
 
 
-class TestAutoConnection:
-    """Tests for auto-connection behavior."""
-
-    def test_connection_to_selected_node(
-        self,
-        mock_nuke: MockNukeModule,
-        tmp_shot_structure: Path
-    ) -> None:
-        """Test that Read node connects to selected node when available."""
-        from conftest import MockNode
-
-        # Set up script path
-        script_path = (
-            tmp_shot_structure
-            / "shows/TESTSHOW/shots/SEQ/SEQ_0010/user/artist/mm/nuke/scene/comp.nk"
-        )
-        mock_nuke._set_script_path(str(script_path))
-
-        # Create and select a source node
-        source_node = MockNode("ColorCorrect")
-        mock_nuke._set_selected_nodes([source_node])
-
-        # Create plate directory with test images
-        plate_dir = (
-            tmp_shot_structure
-            / "shows/TESTSHOW/shots/SEQ/SEQ_0010/turnovers/plates/FG01/v001"
-        )
-        create_image_sequence(
-            plate_dir,
-            "SEQ_0010_FG01_v001",
-            "exr",
-            range(1001, 1011)
-        )
-
-        # Import and run
-        import mm_plate_read
-
-        try:
-            node = mm_plate_read.create_latest_plate_read_hash()
-            # If we get here, check the connection
-            assert node.input(0) == source_node, "Read should connect to selected node"
-        except RuntimeError:
-            # Expected if path validation fails in test environment
-            # The important thing is we tested the setup
-            pass
-
-    def test_no_connection_when_nothing_selected(
-        self,
-        mock_nuke: MockNukeModule,
-        tmp_shot_structure: Path
-    ) -> None:
-        """Test that Read node has no input when nothing is selected."""
-        # Set up script path
-        script_path = (
-            tmp_shot_structure
-            / "shows/TESTSHOW/shots/SEQ/SEQ_0010/user/artist/mm/nuke/scene/comp.nk"
-        )
-        mock_nuke._set_script_path(str(script_path))
-
-        # No selection
-        mock_nuke._set_selected_nodes([])
-
-        # Create plate directory with test images
-        plate_dir = (
-            tmp_shot_structure
-            / "shows/TESTSHOW/shots/SEQ/SEQ_0010/turnovers/plates/FG01/v001"
-        )
-        create_image_sequence(
-            plate_dir,
-            "SEQ_0010_FG01_v001",
-            "exr",
-            range(1001, 1011)
-        )
-
-        import mm_plate_read
-
-        try:
-            node = mm_plate_read.create_latest_plate_read_hash()
-            assert node.input(0) is None, "Read should have no input when nothing selected"
-        except RuntimeError:
-            # Expected if path validation fails
-            pass
+# Note: Auto-connection tests removed.
+# Read nodes are source nodes in Nuke and don't have inputs.
+# The auto-connection functionality was removed from mm_plate_read.py
+# as it was semantically incorrect.
 
 
 class TestMockNukeIntegration:

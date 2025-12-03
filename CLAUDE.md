@@ -65,17 +65,19 @@ if source_node:
 ```
 
 **Scripts that auto-connect:**
-- `mm_geo_read.py` - Connects Read to selected node
-- `mm_plate_read.py` - Connects Read to selected node
-- `mm_playblast_read.py` - Connects Read to selected node (affects Wireframe/Cones)
 - `mm_write_altplates.py` - Connects Write to selected node
 - `mm_ld_import.py` - Connects pasted LD group to selected node
+
+**Scripts that DON'T auto-connect (source nodes):**
+- `mm_geo_read.py` - Read nodes are source nodes with no inputs
+- `mm_plate_read.py` - Read nodes are source nodes with no inputs
+- `mm_playblast_read.py` - Read nodes are source nodes with no inputs (affects Wireframe/Cones)
 
 **Scripts that create independent trees (no auto-connection):**
 - `mm_wireframe_export_setup.py` - Creates standalone 6-node export pipeline
 - `mm_slapcomp_export_setup.py` - Creates standalone dual-pipeline export tree
 
-These export setup scripts intentionally build complete node trees that don't connect to existing work.
+Read node creators and export setup scripts intentionally create source nodes or complete node trees that don't connect to existing work.
 
 ## Nuke-Specific Development Patterns
 

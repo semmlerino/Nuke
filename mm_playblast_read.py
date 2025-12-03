@@ -329,13 +329,8 @@ def create_latest_playblast_read(category: str = "Wireframe") -> nuke.Node:
         except Exception:
             pass
 
-        # Connect to selected node if one was selected
-        if source_node:
-            try:
-                r.setInput(0, source_node)
-                nuke.tprint(f"[playblast] Connected to: {source_node.name()}")
-            except Exception as e:
-                nuke.tprint(f"[playblast] Warning: Could not connect to {source_node.name()}: {e}")
+        # Note: Read nodes are source nodes and don't have inputs.
+        # Auto-connection is not applicable for Read nodes.
 
         nuke.tprint(f"[playblast] Created Read (sequence): {hash_pattern}")
         nuke.tprint(f"[playblast] Category: {category}  Version v{chosen_v}  Frames: {fmin}-{fmax}  Pad: {pad}")
@@ -353,13 +348,8 @@ def create_latest_playblast_read(category: str = "Wireframe") -> nuke.Node:
         except Exception:
             pass
 
-        # Connect to selected node if one was selected
-        if source_node:
-            try:
-                r.setInput(0, source_node)
-                nuke.tprint(f"[playblast] Connected to: {source_node.name()}")
-            except Exception as e:
-                nuke.tprint(f"[playblast] Warning: Could not connect to {source_node.name()}: {e}")
+        # Note: Read nodes are source nodes and don't have inputs.
+        # Auto-connection is not applicable for Read nodes.
 
         nuke.tprint(f"[playblast] Created Read (movie): {movie_path}")
         nuke.tprint(f"[playblast] Category: {category}  Version v{chosen_v}")
