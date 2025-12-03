@@ -315,7 +315,11 @@ def import_latest_ld_nk() -> list[nuke.Node]:
     4. Score candidates and select best match
     5. Paste .nk file contents into current script
     6. Rename primary Group/LiveGroup node with plate ID and version
-    7. Connect LD group to selected node (if any)
+    7. Connect LD node to selected node (if any)
+
+    Connection logic:
+    - Prefers Group/LiveGroup nodes (renamed to LD_3DE_<plate>_v###)
+    - Falls back to first pasted node if no Group/LiveGroup found
 
     Returns:
         List of pasted Nuke nodes
@@ -392,24 +396,29 @@ def import_latest_ld_nk() -> list[nuke.Node]:
     nuke.nodePaste(str(chosen_file))
     pasted = nuke.selectedNodes()
 
-    # Give the primary Group/LiveGroup a stable name with plate & version
+    # Find primary node: prefer Group/LiveGroup, fallback to first pasted node
     main: nuke.Node | None = None
     for n in pasted:
         if n.Class() in ("Group", "LiveGroup"):
             main = n
             break
 
-    if main:
+    # Fallback: use first pasted node if no Group/LiveGroup found
+    if not main and pasted:
+        main = pasted[0]
+        nuke.tprint(f"[3DE-LD] No Group/LiveGroup found, using first node: {main.Class()}")
+
+    if main and main.Class() in ("Group", "LiveGroup"):
         try:
             main.setName(f"LD_3DE_{chosen_plate}_v{chosen_v}", unique=False)
         except Exception:
             pass
 
-    # Connect the LD group to the source node if one was selected
+    # Connect the LD node to the source node if one was selected
     if source_node and main:
         try:
             main.setInput(0, source_node)
-            nuke.tprint(f"[3DE-LD] Connected LD group to: {source_node.name()}")
+            nuke.tprint(f"[3DE-LD] Connected {main.name()} to: {source_node.name()}")
         except Exception as e:
             nuke.tprint(f"[3DE-LD] Warning: Could not connect to {source_node.name()}: {e}")
 

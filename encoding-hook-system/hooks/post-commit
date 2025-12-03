@@ -1,0 +1,144 @@
+#!/usr/bin/bash
+
+# Post-commit hook with background auto-push to encoded-releases branch
+# Creates encoded bundle and launches background script to push to remote
+# Background process avoids branch-switching conflicts during commit
+
+# Fixed directory name (in project root)
+PROJECT_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+HOOK_OUTPUT_DIR="$PROJECT_ROOT/.post-commit-output"
+
+# Clean and recreate directory
+rm -rf "$HOOK_OUTPUT_DIR"
+mkdir -p "$HOOK_OUTPUT_DIR"
+
+# Get current commit info
+CURRENT_COMMIT=$(git rev-parse HEAD)
+CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+COMMIT_MSG=$(git log -1 --pretty=format:'%s')
+
+# Write commit info
+echo "Post-commit hook executed at $(date)" > "$HOOK_OUTPUT_DIR/info.txt"
+echo "Commit: $CURRENT_COMMIT" >> "$HOOK_OUTPUT_DIR/info.txt"
+echo "Branch: $CURRENT_BRANCH" >> "$HOOK_OUTPUT_DIR/info.txt"
+echo "Author: $(git log -1 --pretty=format:'%an <%ae>')" >> "$HOOK_OUTPUT_DIR/info.txt"
+echo "Message: $COMMIT_MSG" >> "$HOOK_OUTPUT_DIR/info.txt"
+
+# Run linting (if ruff is available)
+if command -v ruff &> /dev/null; then
+    echo "Running ruff linting..." > "$HOOK_OUTPUT_DIR/ruff-check.txt"
+    cd "$PROJECT_ROOT"
+    ruff check . >> "$HOOK_OUTPUT_DIR/ruff-check.txt" 2>&1
+    RUFF_EXIT=$?
+    if [ $RUFF_EXIT -eq 0 ]; then
+        echo "✓ No linting issues found" >> "$HOOK_OUTPUT_DIR/ruff-check.txt"
+    else
+        echo "⚠ Linting issues detected (exit code: $RUFF_EXIT)" >> "$HOOK_OUTPUT_DIR/ruff-check.txt"
+    fi
+fi
+
+# Run type checking (if basedpyright is available)
+if command -v basedpyright &> /dev/null; then
+    echo "Running type checking..." > "$HOOK_OUTPUT_DIR/type-check.txt"
+    cd "$PROJECT_ROOT"
+    basedpyright >> "$HOOK_OUTPUT_DIR/type-check.txt" 2>&1
+    TYPE_EXIT=$?
+    if [ $TYPE_EXIT -eq 0 ]; then
+        echo "✓ No type errors found" >> "$HOOK_OUTPUT_DIR/type-check.txt"
+    else
+        echo "⚠ Type errors detected (exit code: $TYPE_EXIT)" >> "$HOOK_OUTPUT_DIR/type-check.txt"
+    fi
+fi
+
+# Quick test of critical imports
+echo "Testing critical imports..." > "$HOOK_OUTPUT_DIR/import-test.txt"
+cd "$PROJECT_ROOT"
+"$PROJECT_ROOT/.venv/bin/python3" -c "
+try:
+    from process_pool_manager import ProcessPoolManager
+    print('✓ process_pool_manager imports successfully')
+except Exception as e:
+    print(f'✗ process_pool_manager import failed: {e}')
+
+try:
+    from shot_model import ShotModel
+    print('✓ shot_model imports successfully')
+except Exception as e:
+    print(f'✗ shot_model import failed: {e}')
+
+try:
+    from main_window import MainWindow
+    print('✓ main_window imports successfully')
+except Exception as e:
+    print(f'✗ main_window import failed: {e}')
+" >> "$HOOK_OUTPUT_DIR/import-test.txt" 2>&1
+
+# Create application bundle and push to encoded-releases
+if [ -f "$PROJECT_ROOT/bundle_app.py" ] && [ -f "$PROJECT_ROOT/transfer_config.json" ]; then
+    echo "Creating application bundle..." > "$HOOK_OUTPUT_DIR/bundle.txt"
+    cd "$PROJECT_ROOT"
+
+    # Create the bundle
+    "$PROJECT_ROOT/.venv/bin/python3" bundle_app.py -c transfer_config.json >> "$HOOK_OUTPUT_DIR/bundle.txt" 2>&1
+    BUNDLE_EXIT=$?
+
+    if [ $BUNDLE_EXIT -eq 0 ]; then
+        echo "✓ Bundle created successfully" >> "$HOOK_OUTPUT_DIR/bundle.txt"
+
+        # Find the most recent encoded file
+        LATEST_BUNDLE=$(ls -t encoded_app_*.txt 2>/dev/null | head -1)
+        if [ -n "$LATEST_BUNDLE" ]; then
+            echo "Bundle file: $LATEST_BUNDLE" >> "$HOOK_OUTPUT_DIR/bundle.txt"
+            BUNDLE_SIZE=$(du -h "$LATEST_BUNDLE" | cut -f1)
+            echo "Bundle size: $BUNDLE_SIZE" >> "$HOOK_OUTPUT_DIR/bundle.txt"
+
+            # Copy the new bundle to encoded_releases directory
+            mkdir -p "$PROJECT_ROOT/encoded_releases"
+            cp "$LATEST_BUNDLE" "$PROJECT_ROOT/encoded_releases/shotbot_latest.txt" >> "$HOOK_OUTPUT_DIR/bundle.txt" 2>&1
+            LATEST_METADATA=$(ls -t encoded_app_*.json 2>/dev/null | head -1)
+            if [ -n "$LATEST_METADATA" ]; then
+                cp "$LATEST_METADATA" "$PROJECT_ROOT/encoded_releases/shotbot_latest_metadata.json" >> "$HOOK_OUTPUT_DIR/bundle.txt" 2>&1
+            fi
+            echo "✓ Copied bundle to encoded_releases/" >> "$HOOK_OUTPUT_DIR/bundle.txt"
+        fi
+
+        # Check if encoded_releases/shotbot_latest.txt exists
+        if [ -f "$PROJECT_ROOT/encoded_releases/shotbot_latest.txt" ]; then
+            echo "" >> "$HOOK_OUTPUT_DIR/bundle.txt"
+            echo "Launching background push to encoded-releases..." >> "$HOOK_OUTPUT_DIR/bundle.txt"
+
+            # Save context for background script
+            echo "$CURRENT_BRANCH" > "$HOOK_OUTPUT_DIR/current_branch.txt"
+            echo "$COMMIT_MSG" > "$HOOK_OUTPUT_DIR/commit_msg.txt"
+            echo "$CURRENT_COMMIT" > "$HOOK_OUTPUT_DIR/current_commit.txt"
+
+            # Launch background script (runs independently after hook exits)
+            BACKGROUND_SCRIPT="$PROJECT_ROOT/.git/hooks/push_bundle_background.sh"
+            if [ -f "$BACKGROUND_SCRIPT" ] && [ -x "$BACKGROUND_SCRIPT" ]; then
+                # Launch with explicit bash and redirect startup errors to a file
+                nohup bash "$BACKGROUND_SCRIPT" > "$HOOK_OUTPUT_DIR/background-startup.log" 2>&1 &
+                BG_PID=$!
+                echo "✓ Background push initiated (PID: $BG_PID, check .post-commit-output/bundle-push.log)" >> "$HOOK_OUTPUT_DIR/bundle.txt"
+            else
+                echo "⚠ Background script not found or not executable: $BACKGROUND_SCRIPT" >> "$HOOK_OUTPUT_DIR/bundle.txt"
+            fi
+        else
+            echo "⚠ shotbot_latest.txt not found, skipping auto-push" >> "$HOOK_OUTPUT_DIR/bundle.txt"
+        fi
+    else
+        echo "⚠ Bundle creation failed (exit code: $BUNDLE_EXIT)" >> "$HOOK_OUTPUT_DIR/bundle.txt"
+    fi
+fi
+
+# Summary
+echo "" > "$HOOK_OUTPUT_DIR/summary.txt"
+echo "Post-Commit Hook Summary" >> "$HOOK_OUTPUT_DIR/summary.txt"
+echo "========================" >> "$HOOK_OUTPUT_DIR/summary.txt"
+echo "Output directory: $HOOK_OUTPUT_DIR" >> "$HOOK_OUTPUT_DIR/summary.txt"
+echo "Files created:" >> "$HOOK_OUTPUT_DIR/summary.txt"
+ls -la "$HOOK_OUTPUT_DIR" | tail -n +2 >> "$HOOK_OUTPUT_DIR/summary.txt"
+
+# Also log to system (optional)
+echo "[$(date)] Post-commit hook completed. Output in $HOOK_OUTPUT_DIR" >> /tmp/shotbot-commits.log
+
+exit 0
